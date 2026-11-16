@@ -77,8 +77,19 @@ def run(bank):
 def main():
     parser = argparse.ArgumentParser(description="Advanced Bank Management System Using OOP")
     parser.add_argument("--data-dir", type=Path, default=Path(__file__).resolve().parent / "data")
+    parser.add_argument("--demo-data", action="store_true", help="Create explicit example records in an empty data directory and exit")
     args = parser.parse_args()
-    try: run(Bank(args.data_dir))
+    try:
+        bank = Bank(args.data_dir)
+        if args.demo_data:
+            if bank.customers or bank.accounts:
+                raise ValidationError("Demo data requires an empty data directory.")
+            bank.create_customer("DEMO1", "Demo Customer", "9000000000", "demo@example.com")
+            bank.open_account("savings", "S100", "DEMO1", "1000", minimum_balance="100", annual_rate="4")
+            bank.open_account("current", "C100", "DEMO1", "500", overdraft_limit="1000")
+            print("Demo accounts created: S100 and C100.")
+        else:
+            run(bank)
     except BankingError as exc:
         print(f"Startup error: {exc}")
         return 1

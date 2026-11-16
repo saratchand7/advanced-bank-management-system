@@ -60,6 +60,8 @@ class Storage:
             state = json.loads(self.path.read_text(encoding="utf-8"), object_pairs_hook=unique_keys)
             if set(state) != {"version", "customers", "accounts"} or type(state["version"]) is not int or state["version"] != 1:
                 raise ValueError("Unsupported snapshot")
+            if not isinstance(state["customers"], list) or not isinstance(state["accounts"], list):
+                raise ValueError("Records must be arrays")
             customers, accounts, ids = {}, {}, {}
             for row in state["customers"]:
                 customer = Customer(**row)

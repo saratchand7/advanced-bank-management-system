@@ -18,12 +18,7 @@ python tools/smoke_test.py
 python -m compileall .
 ```
 
-The application has no packages to install. To regenerate the presentation only:
-
-```powershell
-python -m pip install python-pptx==1.0.2
-python tools/build_presentation.py
-```
+The application has no packages to install.
 
 By default data lives beside main.py in `data/bank.txt`, independent of the terminal's working directory. To use a separate directory:
 
@@ -135,10 +130,7 @@ The CLI collects input. Bank resolves IDs and coordinates persistence. Account s
 ├── tests/
 │   └── test_banking.py
 ├── tools/
-│   ├── smoke_test.py
-│   └── build_presentation.py
-└── presentation/
-    └── Advanced_Bank_Management_System.pptx
+│   └── smoke_test.py
 ```
 
 ## Money, account rules and interest assumptions

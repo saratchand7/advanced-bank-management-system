@@ -4,3 +4,8 @@ __pycache__/
 data/*.txt
 !data/.gitkeep
 *.zip
+
+# Presentation artifacts stay local.
+presentation/
+local_presentation_backup/
+tools/build_presentation.py

@@ -17,16 +17,26 @@ class Account(ABC):
 
     # Encapsulation: balances and ledger have read-only public access.
     @property
-    def account_number(self): return self._account_number
+    def account_number(self):
+        return self._account_number
+
     @property
-    def customer(self): return self._customer
+    def customer(self):
+        return self._customer
+
     @property
-    def balance(self): return self._balance
+    def balance(self):
+        return self._balance
+
     @property
-    def transactions(self): return tuple(self._transactions)
+    def transactions(self):
+        return tuple(self._transactions)
 
     def _record(self, kind, amount, counterparty="", period="", transaction_id=None):
-        self._transactions.append(Transaction.create(self, kind, amount, counterparty, period, transaction_id))
+        transaction = Transaction.create(
+            self, kind, amount, counterparty, period, transaction_id
+        )
+        self._transactions.append(transaction)
 
     def deposit(self, amount):
         amount = money(amount, positive=True)
@@ -35,10 +45,12 @@ class Account(ABC):
         self._record("DEPOSIT", amount)
 
     @abstractmethod
-    def withdraw(self, amount): pass
+    def withdraw(self, amount):
+        pass
 
     @abstractmethod
-    def calculate_interest(self, months): pass
+    def calculate_interest(self, months):
+        pass
 
     def transfer(self, target, amount):
         if not isinstance(target, Account) or target is self or target.account_number == self.account_number:

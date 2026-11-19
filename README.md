@@ -8,7 +8,15 @@ Create customers and savings/current accounts, deposit, withdraw, transfer funds
 
 ## Installation and Windows VS Code commands
 
-Install Python 3.12 or later and open this project folder in VS Code. In its PowerShell terminal:
+Install Python 3.12 or later and Git. Clone the submitted repository, then open the cloned folder in VS Code:
+
+```powershell
+git clone https://github.com/saratchand7/advanced-bank-management-system.git
+cd advanced-bank-management-system
+python main.py
+```
+
+In the VS Code PowerShell terminal, run the application and checks:
 
 ```powershell
 python --version
@@ -59,7 +67,13 @@ Date | Transaction ID | Account | Type | Amount | Balance | Counterparty | Perio
 Closing balance: 900.00
 ```
 
-Statements include the opening entry and all subsequent entries. Export option 11 accepts an output TXT path and overwrites an existing export at that path. Invalid menu choices, customer fields, money and missing accounts show readable errors. Ctrl+C and EOF end the session gracefully. A damaged snapshot causes startup to stop without overwriting it.
+Statements include the opening entry and all subsequent entries. In export option 11, leave the path blank to create a uniquely named TXT file in `<active data directory>/statements/` (normally `data/statements/`). The application prints the full export path. A custom path must end in `.txt`, have an existing parent directory, and name a new file. Relative custom paths are interpreted from the terminal's current directory.
+
+Exports never overwrite existing files. A repeated/custom filename raises ValidationError: choose a different filename or leave the path blank. The active `bank.txt` snapshot is protected, including equivalent relative/absolute paths, symbolic links and hard links. This protection follows `--data-dir`, so changing the data directory does not bypass it. Existing source or unrelated files cannot be silently replaced. Exclusive file creation also protects against an existing destination appearing before the write.
+
+From Python, `bank.export_statement("S1")` returns the new export Path; `bank.export_statement("S1", "new_statement.txt")` writes only if that destination is new. Runtime snapshots and default statement exports are ignored by Git. Keep any custom export paths private too.
+
+Invalid menu choices, customer fields, money and missing accounts show readable errors. Ctrl+C and EOF end the session gracefully. A damaged snapshot causes startup to stop without overwriting it.
 
 ## OOP concepts and architecture
 
@@ -126,7 +140,8 @@ The CLI collects input. Bank resolves IDs and coordinates persistence. Account s
 ├── README.md
 ├── .gitignore
 ├── data/
-│   └── .gitkeep
+│   ├── .gitkeep
+│   └── statements/  # created only when exporting; ignored by Git
 ├── tests/
 │   └── test_banking.py
 ├── tools/
@@ -157,7 +172,7 @@ BankingError is the common base. InvalidAmountError rejects bad monetary inputs.
 
 ## Verification
 
-Run the unittest, CLI smoke and compile commands above. Tests use temporary directories and cover customer validation, both account types, abstraction, encapsulation, polymorphism, deposits, withdrawals, transfers, account limits, invalid amounts, interest confirmation/duplicates, persistence, statements, duplicate IDs, corrupted ledgers and rollback on disk failure. The CLI smoke exercises all 14 menu options, checks exported interest and verifies final balances after restart. No test writes real bank records.
+Run the unittest, CLI smoke and compile commands above. Tests use temporary directories and cover customer validation, both account types, abstraction, encapsulation, polymorphism, deposits, withdrawals, transfers, account limits, invalid amounts, interest confirmation/duplicates, persistence, statements, duplicate IDs, corrupted ledgers, rollback on disk failure, snapshot export protection, existing-file preservation, unique default exports and safe export after restart. The CLI smoke exercises all 14 menu options, checks exported interest and verifies final balances after restart. No test writes real bank records. Platform link tests skip explicitly when the OS does not permit creating a hard link or symbolic link. See [VERIFICATION.md](VERIFICATION.md) for dated executed results and any skips.
 
 ## Limitations and future enhancements
 
@@ -186,20 +201,6 @@ The scope intentionally remains the problem statement. Authentication, concurren
 19. **How do you avoid duplicate interest?** Persist a unique period label in each account's interest entries.
 20. **Why temporary directories in tests?** They isolate cases and protect real customer files.
 
-## Git and GitHub
+## Submitted repository
 
-Local commits preserve implementation stages. No remote push happens automatically. After creating an empty GitHub repository named advanced-bank-management-system, replace YOUR_USERNAME and run:
-
-```powershell
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/advanced-bank-management-system.git
-git push -u origin main
-```
-
-Alternatively, with GitHub CLI installed and authenticated, create the remote and push:
-
-```powershell
-gh repo create advanced-bank-management-system --public --source=. --remote=origin --push
-```
-
-Use only one of these approaches. The .gitignore excludes runtime TXT data, caches, virtual environments and ZIP packages. Check staged files before publishing.
+The project is maintained at [saratchand7/advanced-bank-management-system](https://github.com/saratchand7/advanced-bank-management-system). Clone/setup instructions are above. No remote creation or publishing commands are required to run it. The .gitignore excludes default runtime TXT data and statement exports, caches, virtual environments, ZIP packages and local presentation artifacts.

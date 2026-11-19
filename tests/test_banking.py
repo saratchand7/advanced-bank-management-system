@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -9,10 +10,10 @@ from unittest.mock import patch
 from bank import Bank
 from account import Account
 from customer import Customer
-from savings_account import SavingsAccount
-from current_account import CurrentAccount
-from exceptions import *
-from utils import money
+from exceptions import (
+    AccountNotFoundError, DuplicateAccountError, InsufficientFundsError,
+    InvalidAmountError, StorageError, ValidationError,
+)
 
 class BankingTests(unittest.TestCase):
     def setUp(self):
@@ -114,6 +115,129 @@ class BankingTests(unittest.TestCase):
         text = output.read_text(encoding="utf-8")
         for part in ["Ravi Kumar", "TRANSFER_OUT", "990.00", "A1", "Transaction ID"]: self.assertIn(part, text)
         with self.assertRaises(StorageError): self.bank.export_statement("S1", output / "bad.txt")
+
+    def test_export_rejects_snapshot_and_equivalent_paths(self):
+        snapshot = self.bank.storage.path
+        original = snapshot.read_bytes()
+        aliases = [
+            snapshot,
+            snapshot.resolve(),
+            snapshot.parent / "." / "bank.txt",
+            snapshot.parent / "statements" / ".." / "bank.txt",
+            Path(os.path.relpath(snapshot, Path.cwd())),
+        ]
+        if os.name == "nt":
+            aliases.append(Path(str(snapshot).swapcase()))
+        for path in aliases:
+            with self.subTest(path=path):
+                with self.assertRaisesRegex(ValidationError, "active bank data file"):
+                    self.bank.export_statement("S1", path)
+                self.assertEqual(snapshot.read_bytes(), original)
+        self.assertEqual(Bank(self.temp.name).get_account("S1").balance, self.s.balance)
+
+    def test_export_rejects_hard_link_to_snapshot(self):
+        alias = Path(self.temp.name) / "snapshot_alias.txt"
+        try:
+            os.link(self.bank.storage.path, alias)
+        except OSError as exc:
+            self.skipTest(f"Hard links unavailable: {exc}")
+        original = self.bank.storage.path.read_bytes()
+        with self.assertRaisesRegex(ValidationError, "active bank data file"):
+            self.bank.export_statement("S1", alias)
+        self.assertEqual(self.bank.storage.path.read_bytes(), original)
+        self.assertEqual(alias.read_bytes(), original)
+
+    def test_export_rejects_symbolic_link_to_snapshot(self):
+        alias = Path(self.temp.name) / "snapshot_alias.txt"
+        try:
+            alias.symlink_to(self.bank.storage.path)
+        except OSError as exc:
+            self.skipTest(f"Symbolic links unavailable: {exc}")
+        original = self.bank.storage.path.read_bytes()
+        with self.assertRaisesRegex(ValidationError, "active bank data file"):
+            self.bank.export_statement("S1", alias)
+        self.assertEqual(self.bank.storage.path.read_bytes(), original)
+
+    def test_export_preserves_existing_unrelated_file(self):
+        output = Path(self.temp.name) / "notes.txt"
+        original = b"Unrelated notes must not be overwritten."
+        output.write_bytes(original)
+        with self.assertRaisesRegex(ValidationError, "already exists"):
+            self.bank.export_statement("S1", output)
+        self.assertEqual(output.read_bytes(), original)
+
+    def test_repeated_explicit_export_requires_new_filename(self):
+        output = Path(self.temp.name) / "statement.txt"
+        self.bank.export_statement("S1", output)
+        original = output.read_bytes()
+        self.bank.deposit("S1", "1")
+        with self.assertRaisesRegex(ValidationError, "already exists"):
+            self.bank.export_statement("S1", output)
+        self.assertEqual(output.read_bytes(), original)
+
+    def test_default_exports_are_separate_unique_and_restart_safe(self):
+        original = self.bank.storage.path.read_bytes()
+        first = self.bank.export_statement("S1")
+        second = self.bank.export_statement("S1", "")
+        self.assertNotEqual(first, second)
+        for path in (first, second):
+            self.assertEqual(path.parent, Path(self.temp.name) / "statements")
+            self.assertEqual(path.suffix, ".txt")
+            self.assertEqual(path.read_text(encoding="utf-8"), self.s.statement())
+        self.assertEqual(self.bank.storage.path.read_bytes(), original)
+        restarted = Bank(self.temp.name)
+        self.assertEqual(restarted.get_account("S1").transactions, self.s.transactions)
+
+    def test_safe_relative_export_preserves_bank_data(self):
+        output = Path(self.temp.name) / "safe_statement.txt"
+        original = self.bank.storage.path.read_bytes()
+        relative = Path(os.path.relpath(output, Path.cwd()))
+        self.bank.export_statement("S1", relative)
+        self.assertEqual(output.read_text(encoding="utf-8"), self.s.statement())
+        self.assertEqual(self.bank.storage.path.read_bytes(), original)
+        self.assertEqual(Bank(self.temp.name).get_account("S1").balance, self.s.balance)
+
+    def test_export_requires_txt_extension(self):
+        for name in ("source.py", "bank.json", "no_extension"):
+            output = Path(self.temp.name) / name
+            with self.subTest(name=name), self.assertRaises(ValidationError):
+                self.bank.export_statement("S1", output)
+            self.assertFalse(output.exists())
+
+    def test_unknown_account_does_not_create_export_directory(self):
+        with self.assertRaises(AccountNotFoundError):
+            self.bank.export_statement("missing")
+        self.assertFalse((Path(self.temp.name) / "statements").exists())
+
+    def test_export_permission_failure_is_storage_error(self):
+        original = self.bank.storage.path.read_bytes()
+        with patch("bank.Path.open", side_effect=PermissionError("access denied")):
+            with self.assertRaises(StorageError):
+                self.bank.export_statement("S1", Path(self.temp.name) / "denied.txt")
+        self.assertEqual(self.bank.storage.path.read_bytes(), original)
+
+    def test_cli_export_blocks_unsafe_paths_then_accepts_default(self):
+        snapshot = self.bank.storage.path
+        original = snapshot.read_bytes()
+        existing = Path(self.temp.name) / "notes.txt"
+        existing.write_text("Keep these notes.", encoding="utf-8")
+        commands = ["11", "S1", str(snapshot), "11", "S1", str(existing),
+                    "11", "S1", "", "14"]
+        result = subprocess.run(
+            [sys.executable, "main.py", "--data-dir", self.temp.name],
+            input="\n".join(commands) + "\n", text=True, capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("active bank data file", result.stdout)
+        self.assertIn("already exists", result.stdout)
+        self.assertIn("Statement exported:", result.stdout)
+        self.assertIn("Goodbye.", result.stdout)
+        self.assertEqual(snapshot.read_bytes(), original)
+        self.assertEqual(existing.read_text(encoding="utf-8"), "Keep these notes.")
+        exports = list((Path(self.temp.name) / "statements").glob("*.txt"))
+        self.assertEqual(len(exports), 1)
+        self.assertEqual(exports[0].read_text(encoding="utf-8"), self.s.statement())
+        self.assertEqual(Bank(self.temp.name).get_account("S1").balance, self.s.balance)
 
     def test_restart_preserves_state(self):
         self.bank.withdraw("A1", "300")

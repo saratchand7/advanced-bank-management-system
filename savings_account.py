@@ -22,4 +22,5 @@ class SavingsAccount(Account):
 
     def calculate_interest(self, months):
         duration = self.validate_months(months)
-        return (self.balance * self.annual_rate * duration / Decimal("1200")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        interest = self.balance * self.annual_rate * duration / Decimal("1200")
+        return interest.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

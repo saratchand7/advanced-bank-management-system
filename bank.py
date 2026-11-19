@@ -1,6 +1,6 @@
-from dataclasses import asdict
 from copy import deepcopy
 from pathlib import Path
+from uuid import uuid4
 from customer import Customer
 from savings_account import SavingsAccount
 from current_account import CurrentAccount
@@ -55,8 +55,10 @@ class Bank:
         return self._commit(operation)
 
     def get_account(self, number):
-        try: return self.accounts[number]
-        except KeyError: raise AccountNotFoundError(f"Account {number} not found.") from None
+        try:
+            return self.accounts[number]
+        except KeyError:
+            raise AccountNotFoundError(f"Account {number} not found.") from None
 
     def deposit(self, number, amount):
         return self._commit(lambda: self.get_account(number).deposit(amount))
@@ -86,8 +88,37 @@ class Bank:
             return amount
         return self._commit(operation)
 
-    def export_statement(self, number, path):
+    def export_statement(self, number, path=None):
+        """Export to a new TXT file without replacing bank data or other files."""
+        statement = self.get_account(number).statement()
         try:
-            Path(path).write_text(self.get_account(number).statement(), encoding="utf-8")
-        except OSError as exc:
+            if path is None or path == "":
+                directory = self.storage.directory / "statements"
+                destination = directory / f"{number}_{uuid4().hex}.txt"
+            else:
+                destination = Path(path)
+            destination = destination.absolute()
+            snapshot = self.storage.path.resolve()
+
+            # resolve() catches relative, .., case and symbolic-link aliases.
+            if destination.resolve() == snapshot:
+                raise ValidationError("Cannot export over the active bank data file.")
+            # samefile() also recognizes hard links to an existing snapshot.
+            if destination.exists() and snapshot.exists() and destination.samefile(snapshot):
+                raise ValidationError("Cannot export over the active bank data file.")
+            if destination.suffix.lower() != ".txt":
+                raise ValidationError("Choose a TXT export filename ending in .txt.")
+
+            if path is None or path == "":
+                destination.parent.mkdir(parents=True, exist_ok=True)
+            # Exclusive creation refuses existing files, including symbolic links.
+            with destination.open("x", encoding="utf-8") as handle:
+                handle.write(statement)
+            return destination
+        except FileExistsError:
+            raise ValidationError(
+                "Export destination already exists. Choose a new filename "
+                "or leave the path blank for a unique export."
+            ) from None
+        except (OSError, ValueError, RuntimeError) as exc:
             raise StorageError(f"Cannot export statement: {exc}") from exc
